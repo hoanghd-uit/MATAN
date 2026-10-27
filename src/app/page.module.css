@@ -346,19 +346,19 @@
   display: flex;
   gap: var(--gap-md);
   width: 100%;
-  max-width: 900px;
+  max-width: 960px;
   align-items: stretch;
   animation: slideUp 400ms ease 180ms both;
 }
 
 /* === ID Config === */
 .idConfig {
-  flex: 1;
-  width: 100%;
+  flex: 1.6;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: var(--gap-lg);
-  padding: 14px 24px;
+  gap: var(--gap-md);
+  padding: 12px 20px;
   background: var(--bg-card);
   border: 1px solid var(--bg-card-border);
   border-radius: var(--radius-md);
@@ -366,23 +366,34 @@
 
 .idInputs {
   display: flex;
-  gap: var(--gap-lg);
+  gap: var(--gap-md);
   flex: 1;
+  min-width: 0;
 }
 
 .idField {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   font-size: 13px;
   color: var(--text-secondary);
   flex: 1;
+  min-width: 0;
+}
+
+.idField span {
+  white-space: nowrap;
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
 }
 
 .idInput {
   flex: 1;
+  min-width: 90px;
   width: 100%;
-  padding: 8px 14px;
+  padding: 8px 12px;
   font-size: 13px;
   background: var(--bg-secondary);
   border: 1px solid var(--bg-card-border);
@@ -399,11 +410,11 @@
 /* === Execution Mode Config === */
 .executionModeConfig {
   flex: 1;
-  width: 100%;
+  min-width: 320px;
   display: flex;
   align-items: center;
   gap: var(--gap-md);
-  padding: 14px 20px;
+  padding: 12px 18px;
   background: var(--bg-card);
   border: 1px solid var(--bg-card-border);
   border-radius: var(--radius-md);
@@ -554,7 +565,7 @@
   display: flex;
   gap: var(--gap-lg);
   width: 100%;
-  max-width: 900px;
+  max-width: 960px;
   justify-content: space-between;
   animation: slideUp 400ms ease 150ms both;
 }

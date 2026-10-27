@@ -59,8 +59,24 @@
   top: 0;
   left: 0;
   right: 0;
-  z-index: 2;
-  background: rgba(10, 10, 15, 0.4);
+  z-index: 4;
+  background: rgba(10, 10, 15, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .nameInput {
@@ -72,7 +88,8 @@
   font-weight: 600;
   color: var(--text-primary);
   outline: none;
-  width: 160px;
+  width: 140px;
+  max-width: 180px;
   transition: all var(--transition-fast);
 }
 

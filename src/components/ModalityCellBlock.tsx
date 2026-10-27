@@ -171,26 +171,48 @@ export default function ModalityCellBlock({ cell, index, totalCells }: ModalityC
       onDrop={handleDrop}
       id={`block-modality-${cell.id}`}
     >
-      {/* Top Header Row for editable Modality Name & Delete Cell */}
+      {/* Top Header Row for Type Badge, editable Modality Name, and Actions */}
       <div className={styles.cellHeader} onClick={(e) => e.stopPropagation()}>
-        <input
-          type="text"
-          className={styles.nameInput}
-          value={cell.name}
-          onChange={(e) => updateModalityCell(cell.id, { name: e.target.value })}
-          placeholder={`Modality ${index + 1}`}
-          title="Click to rename this modality"
-        />
-        {totalCells > 1 && (
-          <button
-            type="button"
-            className={styles.deleteCellBtn}
-            onClick={() => removeModalityCell(cell.id)}
-            title="Remove this modality cell"
-          >
-            ✕
-          </button>
-        )}
+        <div className={styles.headerLeft}>
+          {isLoaded && (
+            <span className={styles.typeBadge}>
+              {cell.type === 'video' && '🎬 Video'}
+              {cell.type === 'images' && `🖼️ ${cell.files.length} Frames`}
+              {cell.type === 'audio' && '🎵 Audio'}
+              {cell.type === 'telemetry' && `📊 ${cell.telemetryData?.length || 0} Events`}
+            </span>
+          )}
+          <input
+            type="text"
+            className={styles.nameInput}
+            value={cell.name}
+            onChange={(e) => updateModalityCell(cell.id, { name: e.target.value })}
+            placeholder={`Modality ${index + 1}`}
+            title="Click to rename this modality"
+          />
+        </div>
+        <div className={styles.headerRight}>
+          {isLoaded && (
+            <button
+              type="button"
+              className={styles.removeFileBtn}
+              onClick={handleRemoveFile}
+              title="Remove uploaded data"
+            >
+              ✕
+            </button>
+          )}
+          {totalCells > 1 && (
+            <button
+              type="button"
+              className={styles.deleteCellBtn}
+              onClick={() => removeModalityCell(cell.id)}
+              title="Remove this modality cell"
+            >
+              ✕
+            </button>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -207,24 +229,6 @@ export default function ModalityCellBlock({ cell, index, totalCells }: ModalityC
             /* eslint-disable-next-line @next/next/no-img-element */
             <img src={cell.urls[0]} alt="First frame" className={styles.previewMedia} />
           )}
-
-          {/* Top preview overlay bar */}
-          <div className={styles.previewTopBar} onClick={(e) => e.stopPropagation()}>
-            <span className={styles.typeBadge}>
-              {cell.type === 'video' && '🎬 Video'}
-              {cell.type === 'images' && `🖼️ ${cell.files.length} Frames`}
-              {cell.type === 'audio' && '🎵 Audio'}
-              {cell.type === 'telemetry' && `📊 ${cell.telemetryData?.length || 0} Events`}
-            </span>
-            <button
-              type="button"
-              className={styles.removeFileBtn}
-              onClick={handleRemoveFile}
-              title="Remove uploaded data"
-            >
-              ✕
-            </button>
-          </div>
 
           {/* Center info */}
           <div className={styles.statsCenter}>
