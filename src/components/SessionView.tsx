@@ -76,10 +76,13 @@ export default function SessionView() {
     setActiveDimensionIndex,
     guidedRatings,
     guidedLabelFileName,
+    modalities,
+    executionMode,
   } = useSessionStore();
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const gamingSpaceVideoRef = useRef<HTMLVideoElement>(null);
+  const modalityVideoRefs = useRef<Record<string, HTMLVideoElement>>({});
   const waveSurferRef = useRef<WaveSurfer | null>(null);
   const waveContainerRef = useRef<HTMLDivElement>(null);
   const playTimerRef = useRef<number | null>(null);
@@ -88,6 +91,12 @@ export default function SessionView() {
   const timelineScrollRef = useRef<HTMLDivElement>(null);
 
   const hasGamingSpace = gamingSpaceMedia !== null;
+
+  const activeModalities = useMemo(() => {
+    return modalities.filter(
+      (m) => m.type !== null && (m.files.length > 0 || (m.telemetryData && m.telemetryData.length > 0))
+    );
+  }, [modalities]);
 
   const [isMuted, setIsMuted] = useState(false);
   const [audioPadMode, setAudioPadMode] = useState<AudioPadMode>('exact');
@@ -101,31 +110,39 @@ export default function SessionView() {
     playbackSpeedRef.current = playbackSpeed;
   }, [playbackSpeed]);
 
-
-  // Export configuration state
-  // TODO: uncomment this for future uncomment
-  // const [exportMode, setExportMode] = useState<'append' | 'label_only'>('append');
-  const [exportMode, setExportMode] = useState<'append' | 'label_only'>('label_only');
+  // Export configuration state (re-open append option as default)
+  const [exportMode, setExportMode] = useState<'append' | 'label_only'>('append');
   const [customFileName, setCustomFileName] = useState<string>('');
   const [isFileNameDirty, setIsFileNameDirty] = useState<boolean>(false);
 
-  // TODO: uncomment this for future uncomment
-  // const activeDim = dimensions[activeDimensionIndex] || { name: 'Emotion', min: -1, max: 1, step: 0.1 };
   const activeDim = dimensions[activeDimensionIndex] || { name: 'Valence', min: -1, max: 1, step: 0.1 };
   const activeDimName = activeDim.name;
   const ratingConfig = activeDim;
 
   const currentRating = ratings[activeDimName]?.[currentEventIndex] ?? 0;
   const activeVisitedEvents = visitedEvents[activeDimName] || new Set<number>();
-  const allVisited = activeVisitedEvents.size >= timelineEvents.length;
 
-  // Check if all dimensions are complete
+  // Check if all dimensions or single-pass frames are complete
   const allDimensionsComplete = useMemo(() => {
+    if (executionMode === 'single_pass') {
+      return Array.from({ length: timelineEvents.length }, (_, i) => i).every((idx) => {
+        return dimensions.some((dim) => visitedEvents[dim.name]?.has(idx));
+      });
+    }
     return dimensions.every((dim) => {
       const visited = visitedEvents[dim.name];
       return visited && visited.size >= timelineEvents.length;
     });
-  }, [dimensions, visitedEvents, timelineEvents.length]);
+  }, [executionMode, dimensions, visitedEvents, timelineEvents.length]);
+
+  const allVisited = useMemo(() => {
+    if (executionMode === 'single_pass') {
+      return Array.from({ length: timelineEvents.length }, (_, i) => i).every((idx) => {
+        return dimensions.some((dim) => visitedEvents[dim.name]?.has(idx));
+      });
+    }
+    return activeVisitedEvents.size >= timelineEvents.length;
+  }, [executionMode, dimensions, visitedEvents, activeVisitedEvents, timelineEvents.length]);
 
   // Set active dimension on mount to the first incomplete one
   useEffect(() => {
@@ -140,6 +157,11 @@ export default function SessionView() {
   }, []);
 
   const handleDimensionChange = (newIndex: number) => {
+    if (executionMode === 'single_pass') {
+      setActiveDimensionIndex(newIndex);
+      return;
+    }
+
     const currentActiveDimName = dimensions[activeDimensionIndex].name;
     const currentActiveVisited = visitedEvents[currentActiveDimName];
     const isComplete = currentActiveVisited && currentActiveVisited.size >= timelineEvents.length;
@@ -258,26 +280,66 @@ export default function SessionView() {
     }
   }, [isMuted]);
 
+  const formatOffset = (offsetSec: number) => {
+    if (!offsetSec || offsetSec === 0) return null;
+    const sign = offsetSec > 0 ? '+' : '-';
+    const abs = Math.abs(offsetSec);
+    const m = Math.floor(abs / 60).toString().padStart(2, '0');
+    const s = Math.round(abs % 60).toString().padStart(2, '0');
+    return `${sign}${m}:${s}`;
+  };
+
+  const getCurrentImageForModality = useCallback((cell: any) => {
+    if (!cell.files || cell.files.length === 0 || !currentEvent) return null;
+    const effectiveTime = Math.max(0, currentEvent.relativeTime + (cell.skipOffset || 0));
+    let closestIndex = -1;
+    let minDiff = Infinity;
+    for (let i = 0; i < cell.files.length; i++) {
+      const file = cell.files[i];
+      const time = parseImageFilenameToTime(file.name);
+      if (time !== null) {
+        const diff = Math.abs(time - effectiveTime);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestIndex = i;
+        }
+      }
+    }
+    if (closestIndex !== -1) return cell.urls[closestIndex];
+    const idx = Math.min(currentEventIndex, cell.urls.length - 1);
+    return cell.urls[idx];
+  }, [currentEvent, currentEventIndex]);
+
   // Seek media to current event (only when NOT playing — play handles its own seeking)
   useEffect(() => {
     if (!currentEvent || isPlaying) return;
 
-    // Seek video
+    // Seek legacy video
     if (videoRef.current && gameplayMedia?.type === 'video') {
       videoRef.current.currentTime = currentEvent.relativeTime;
     }
 
-    // Seek gaming space video
+    // Seek legacy gaming space video
     if (gamingSpaceVideoRef.current && gamingSpaceMedia) {
       gamingSpaceVideoRef.current.currentTime = Math.max(0, currentEvent.relativeTime + gamingSpaceMedia.skipOffset);
     }
 
+    // Seek all active modality videos applying each cell's skipOffset
+    activeModalities.forEach((cell) => {
+      const el = modalityVideoRefs.current[cell.id];
+      if (el && cell.type === 'video') {
+        el.currentTime = Math.max(0, currentEvent.relativeTime + (cell.skipOffset || 0));
+      }
+    });
+
     // Seek audio waveform
     if (waveSurferRef.current && totalDuration > 0) {
-      const progress = currentEvent.relativeTime / totalDuration;
+      const audioCell = activeModalities.find((m) => m.type === 'audio');
+      const audioOffset = audioCell?.skipOffset || 0;
+      const progress = Math.max(0, currentEvent.relativeTime + audioOffset) / totalDuration;
       waveSurferRef.current.seekTo(Math.min(1, Math.max(0, progress)));
     }
-  }, [currentEventIndex, currentEvent, gameplayMedia, gamingSpaceMedia, totalDuration, isPlaying]);
+  }, [currentEventIndex, currentEvent, gameplayMedia, gamingSpaceMedia, activeModalities, totalDuration, isPlaying]);
 
   // Auto-scroll timeline to keep active marker visible
   useEffect(() => {
@@ -309,6 +371,7 @@ export default function SessionView() {
     if (videoRef.current) videoRef.current.pause();
     if (gamingSpaceVideoRef.current) gamingSpaceVideoRef.current.pause();
     if (waveSurferRef.current) waveSurferRef.current.pause();
+    Object.values(modalityVideoRefs.current).forEach((el) => el.pause());
   }, [setPlaying, clearAllTimers]);
 
   // === STEP MODE: Play from current event to next event with game log ===
@@ -361,6 +424,16 @@ export default function SessionView() {
       gamingSpaceVideoRef.current.play();
     }
 
+    // Seek and play all active modality videos
+    activeModalities.forEach((cell) => {
+      const el = modalityVideoRefs.current[cell.id];
+      if (el && cell.type === 'video') {
+        el.currentTime = Math.max(0, startTime + (cell.skipOffset || 0));
+        el.playbackRate = speed;
+        el.play();
+      }
+    });
+
     // Schedule frame advances
     for (let i = startIdx + 1; i <= endIdx; i++) {
       const delayMs = ((timelineEvents[i].relativeTime - startTime) * 1000) / speed;
@@ -370,13 +443,14 @@ export default function SessionView() {
           setPlaying(false);
           if (videoRef.current) videoRef.current.pause();
           if (gamingSpaceVideoRef.current) gamingSpaceVideoRef.current.pause();
+          Object.values(modalityVideoRefs.current).forEach((el) => el.pause());
         }
       }, delayMs);
       if (i === endIdx) frameAdvanceTimerRef.current = timerId;
     }
   }, [
     isPlaying, stepStartEventIndex, findNextLogEventIndex, timelineEvents,
-    totalDuration, audioPadMode, gameplayMedia, gamingSpaceMedia, setPlaying, seekToEvent, stopPlayback,
+    totalDuration, audioPadMode, gameplayMedia, gamingSpaceMedia, activeModalities, setPlaying, seekToEvent, stopPlayback,
   ]);
 
   // === AUTOPLAY MODE: Continuous playback, auto-assign ratings ===
@@ -415,6 +489,16 @@ export default function SessionView() {
       gamingSpaceVideoRef.current.play();
     }
 
+    // Play all active modality videos
+    activeModalities.forEach((cell) => {
+      const el = modalityVideoRefs.current[cell.id];
+      if (el && cell.type === 'video') {
+        el.currentTime = Math.max(0, startTime + (cell.skipOffset || 0));
+        el.playbackRate = speed;
+        el.play();
+      }
+    });
+
     // Schedule auto-advance for ALL remaining frames
     // Each frame uses autoplaySeekToEvent which carries forward current rating
     const timers: number[] = [];
@@ -429,6 +513,7 @@ export default function SessionView() {
           if (videoRef.current) videoRef.current.pause();
           if (gamingSpaceVideoRef.current) gamingSpaceVideoRef.current.pause();
           if (waveSurferRef.current) waveSurferRef.current.pause();
+          Object.values(modalityVideoRefs.current).forEach((el) => el.pause());
         }
       }, delayMs);
       timers.push(timerId);
@@ -436,7 +521,7 @@ export default function SessionView() {
     autoplayTimersRef.current = timers;
   }, [
     isPlaying, currentEventIndex, timelineEvents, totalDuration,
-    gameplayMedia, gamingSpaceMedia, setPlaying, autoplaySeekToEvent, stopPlayback,
+    gameplayMedia, gamingSpaceMedia, activeModalities, setPlaying, autoplaySeekToEvent, stopPlayback,
   ]);
 
   // Dynamic speed adjustment (applies immediately, even while playing)
@@ -454,6 +539,9 @@ export default function SessionView() {
       if (waveSurferRef.current) {
         waveSurferRef.current.setPlaybackRate(newSpeed, true);
       }
+      Object.values(modalityVideoRefs.current).forEach((el) => {
+        el.playbackRate = newSpeed;
+      });
 
       // If actively playing, reschedule remaining timers from the current frame position
       if (isPlaying) {
@@ -475,6 +563,7 @@ export default function SessionView() {
                 if (videoRef.current) videoRef.current.pause();
                 if (gamingSpaceVideoRef.current) gamingSpaceVideoRef.current.pause();
                 if (waveSurferRef.current) waveSurferRef.current.pause();
+                Object.values(modalityVideoRefs.current).forEach((el) => el.pause());
               }
             }, delayMs);
             timers.push(timerId);
@@ -499,6 +588,7 @@ export default function SessionView() {
                   setPlaying(false);
                   if (videoRef.current) videoRef.current.pause();
                   if (gamingSpaceVideoRef.current) gamingSpaceVideoRef.current.pause();
+                  Object.values(modalityVideoRefs.current).forEach((el) => el.pause());
                 }
               }, delayMs);
               if (i === endIdx) frameAdvanceTimerRef.current = timerId;
@@ -602,6 +692,37 @@ export default function SessionView() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [manualSeek, manualPrev, manualNext, rateUp, rateDown, handlePlayPause, timelineEvents.length]);
 
+  // Mouse wheel rating control (#4)
+  const wheelAccumulatorRef = useRef(0);
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.closest('input') ||
+        target?.closest('textarea') ||
+        target?.closest('select') ||
+        target?.closest(`.${styles.timelineScroll}`)
+      ) {
+        return;
+      }
+
+      e.preventDefault();
+      wheelAccumulatorRef.current += e.deltaY;
+      const threshold = 30;
+
+      if (wheelAccumulatorRef.current <= -threshold) {
+        rateUp();
+        wheelAccumulatorRef.current = 0;
+      } else if (wheelAccumulatorRef.current >= threshold) {
+        rateDown();
+        wheelAccumulatorRef.current = 0;
+      }
+    };
+
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    return () => window.removeEventListener('wheel', handleWheel);
+  }, [rateUp, rateDown]);
+
   // Export handler
   const handleSubmit = () => {
     submitSession();
@@ -676,66 +797,149 @@ export default function SessionView() {
   return (
     <div className={styles.wrapper}>
       <div className={styles.container}>
-        {/* Top: synced display (grid2x2 or gridNoGamingSpace) */}
-        <div className={hasGamingSpace ? styles.grid2x2 : styles.gridNoGamingSpace}>
-          {/* Block 1: Audio Waveform */}
-          <div className={`${styles.block} ${styles.audioBlock}`}>
-            <div className={styles.blockLabel}>🎵 Audio Waveform</div>
-            <div ref={waveContainerRef} className={styles.waveContainer} />
-          </div>
+        {/* Top: synced display (Modal Adapter Grid or legacy fallback) */}
+        {activeModalities.length > 0 ? (
+          <div
+            className={`${styles.modalAdapterGrid} ${
+              activeModalities.length === 1
+                ? styles.modalGrid1
+                : activeModalities.length === 2
+                ? styles.modalGrid2
+                : activeModalities.length === 3
+                ? styles.modalGrid3
+                : activeModalities.length === 4
+                ? styles.modalGrid4
+                : styles.modalGridMulti
+            }`}
+          >
+            {activeModalities.map((cell) => {
+              const offsetStr = formatOffset(cell.skipOffset);
+              return (
+                <div
+                  key={cell.id}
+                  className={`${styles.block} ${
+                    cell.type === 'audio'
+                      ? styles.audioBlock
+                      : cell.type === 'telemetry'
+                      ? styles.telemetryInlineBlock
+                      : styles.gameplayBlock
+                  }`}
+                >
+                  <div className={styles.blockLabel}>
+                    <span>{cell.name || cell.type}</span>
+                    {offsetStr && <span className={styles.offsetPill}>Skip: {offsetStr}</span>}
+                  </div>
 
-          {/* Block 2: Telemetry Log */}
-          <div className={`${styles.block} ${styles.telemetryInlineBlock}`}>
-            <div className={styles.blockLabel}>📊 Telemetry Log</div>
-            {currentRow ? (
-              <div className={styles.telemetryGrid}>
-                {highlightFields.map((field) =>
-                  currentRow[field] !== undefined ? (
-                    <div key={field} className={styles.telemetryInlineRow}>
-                      <span className={styles.sidebarKey}>{field.replace(/^.*?_/, '')}</span>
-                      <span className={styles.sidebarValue}>{currentRow[field]}</span>
-                    </div>
-                  ) : null,
-                )}
+                  {cell.type === 'video' && cell.urls[0] && (
+                    <video
+                      ref={(el) => {
+                        if (el) modalityVideoRefs.current[cell.id] = el;
+                        else delete modalityVideoRefs.current[cell.id];
+                      }}
+                      src={cell.urls[0]}
+                      className={styles.videoPlayer}
+                      muted
+                    />
+                  )}
+
+                  {cell.type === 'images' && (
+                    (() => {
+                      const imgUrl = getCurrentImageForModality(cell);
+                      return imgUrl ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img src={imgUrl} alt={cell.name} className={styles.frameImage} />
+                      ) : (
+                        <div className={styles.sidebarEmpty}>No frame available</div>
+                      );
+                    })()
+                  )}
+
+                  {cell.type === 'audio' && (
+                    <div ref={waveContainerRef} className={styles.waveContainer} />
+                  )}
+
+                  {cell.type === 'telemetry' && (
+                    cell.telemetryData && cell.telemetryData[currentEvent?.rowIndex ?? 0] ? (
+                      <div className={styles.telemetryGrid}>
+                        {highlightFields.map((field) => {
+                          const row = cell.telemetryData![currentEvent?.rowIndex ?? 0];
+                          return row && row[field] !== undefined ? (
+                            <div key={field} className={styles.telemetryInlineRow}>
+                              <span className={styles.sidebarKey}>{field.replace(/^.*?_/, '')}</span>
+                              <span className={styles.sidebarValue}>{row[field]}</span>
+                            </div>
+                          ) : null;
+                        })}
+                      </div>
+                    ) : (
+                      <div className={styles.sidebarEmpty}>No telemetry data for this frame</div>
+                    )
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className={hasGamingSpace ? styles.grid2x2 : styles.gridNoGamingSpace}>
+            {/* Block 1: Audio Waveform */}
+            <div className={`${styles.block} ${styles.audioBlock}`}>
+              <div className={styles.blockLabel}>🎵 Audio Waveform</div>
+              <div ref={waveContainerRef} className={styles.waveContainer} />
+            </div>
+
+            {/* Block 2: Telemetry Log */}
+            <div className={`${styles.block} ${styles.telemetryInlineBlock}`}>
+              <div className={styles.blockLabel}>📊 Telemetry Log</div>
+              {currentRow ? (
+                <div className={styles.telemetryGrid}>
+                  {highlightFields.map((field) =>
+                    currentRow[field] !== undefined ? (
+                      <div key={field} className={styles.telemetryInlineRow}>
+                        <span className={styles.sidebarKey}>{field.replace(/^.*?_/, '')}</span>
+                        <span className={styles.sidebarValue}>{currentRow[field]}</span>
+                      </div>
+                    ) : null,
+                  )}
+                </div>
+              ) : (
+                <div className={styles.sidebarEmpty}>No telemetry data for this frame</div>
+              )}
+            </div>
+
+            {/* Block 3: Gameplay */}
+            <div className={`${styles.block} ${styles.gameplayBlock}`}>
+              {gameplayMedia?.type === 'video' ? (
+                <video
+                  ref={videoRef}
+                  src={gameplayMedia.urls[0]}
+                  className={styles.videoPlayer}
+                  muted
+                />
+              ) : (
+                getCurrentImage() && (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={getCurrentImage()!} alt="Gameplay frame" className={styles.frameImage} />
+                )
+              )}
+              <div className={styles.blockLabel}>
+                🎮 Frame {currentEventIndex + 1} / {timelineEvents.length}
               </div>
-            ) : (
-              <div className={styles.sidebarEmpty}>No telemetry data for this frame</div>
+            </div>
+
+            {/* Block 4: Gaming Space */}
+            {hasGamingSpace && (
+              <div className={`${styles.block} ${styles.gamingSpaceBlock}`}>
+                <video
+                  ref={gamingSpaceVideoRef}
+                  src={gamingSpaceMedia?.url}
+                  className={styles.gamingSpaceVideo}
+                  muted
+                />
+                <div className={styles.blockLabel}>🎥 Gaming Space</div>
+              </div>
             )}
           </div>
-
-          {/* Block 3: Gameplay */}
-          <div className={`${styles.block} ${styles.gameplayBlock}`}>
-            {gameplayMedia?.type === 'video' ? (
-              <video
-                ref={videoRef}
-                src={gameplayMedia.urls[0]}
-                className={styles.videoPlayer}
-                muted
-              />
-            ) : (
-              getCurrentImage() && (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={getCurrentImage()!} alt="Gameplay frame" className={styles.frameImage} />
-              )
-            )}
-            <div className={styles.blockLabel}>
-              🎮 Frame {currentEventIndex + 1} / {timelineEvents.length}
-            </div>
-          </div>
-
-          {/* Block 4: Gaming Space */}
-          {hasGamingSpace && (
-            <div className={`${styles.block} ${styles.gamingSpaceBlock}`}>
-              <video
-                ref={gamingSpaceVideoRef}
-                src={gamingSpaceMedia?.url}
-                className={styles.gamingSpaceVideo}
-                muted
-              />
-              <div className={styles.blockLabel}>🎥 Gaming Space</div>
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Timeline Bar */}
         <div className={styles.timelineSection}>
@@ -989,18 +1193,19 @@ export default function SessionView() {
                 <div className={styles.exportModeGroup}>
                   <span className={styles.submitLabel}>Output Mode</span>
                   <div className={styles.toggleContainer}>
-                    {/* TODO: uncomment this for future uncomment */}
-                    {/* <button
+                    <button
                       type="button"
                       className={`${styles.toggleOption} ${exportMode === 'append' ? styles.toggleActive : ''}`}
                       onClick={() => handleExportModeChange('append')}
+                      id="btn-export-append"
                     >
                       Append to CSV source
-                    </button> */}
+                    </button>
                     <button
                       type="button"
                       className={`${styles.toggleOption} ${exportMode === 'label_only' ? styles.toggleActive : ''}`}
                       onClick={() => handleExportModeChange('label_only')}
+                      id="btn-export-label-only"
                     >
                       Export label only
                     </button>

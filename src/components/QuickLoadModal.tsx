@@ -24,6 +24,7 @@ export default function QuickLoadModal({ isOpen, onClose }: QuickLoadModalProps)
     setGamingSpaceMedia,
     setDataSampleId,
     setGuidedLabelData,
+    setModalities,
   } = useSessionStore();
 
   const [isDragging, setIsDragging] = useState(false);
@@ -60,7 +61,65 @@ export default function QuickLoadModal({ isOpen, onClose }: QuickLoadModalProps)
       });
     }
 
-    // 5. Guided Label File (Optional)
+    // 5. Populate generic modalities for Responsive Modal Adapter
+    const newModalities = [];
+    if (res.gameplayFiles && res.gameplayFiles.length > 0) {
+      newModalities.push({
+        id: 'mod-gameplay',
+        name: 'Screen Media (Frames)',
+        type: 'images' as const,
+        files: res.gameplayFiles,
+        urls: res.gameplayFiles.map((f) => URL.createObjectURL(f)),
+        skipOffset: 0,
+      });
+    }
+    if (res.telemetryData && res.telemetryData.length > 0) {
+      newModalities.push({
+        id: 'mod-telemetry',
+        name: 'Telemetry Log',
+        type: 'telemetry' as const,
+        files: [],
+        urls: [],
+        skipOffset: 0,
+        telemetryHeaders: res.telemetryHeaders,
+        telemetryData: res.telemetryData,
+        telemetryFileName: res.telemetryFileName,
+      });
+    }
+    if (res.audioFile) {
+      newModalities.push({
+        id: 'mod-audio',
+        name: 'Voice Chat',
+        type: 'audio' as const,
+        files: [res.audioFile],
+        urls: [URL.createObjectURL(res.audioFile)],
+        skipOffset: 0,
+      });
+    }
+    if (res.gamingSpaceFile) {
+      newModalities.push({
+        id: 'mod-video',
+        name: 'Gaming Space Video',
+        type: 'video' as const,
+        files: [res.gamingSpaceFile],
+        urls: [URL.createObjectURL(res.gamingSpaceFile)],
+        skipOffset: 0,
+      });
+    }
+
+    while (newModalities.length < 4) {
+      newModalities.push({
+        id: `mod-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        name: '',
+        type: null,
+        files: [],
+        urls: [],
+        skipOffset: 0,
+      });
+    }
+    setModalities(newModalities);
+
+    // 6. Guided Label File (Optional)
     if (res.guidedLabelFile && res.guidedLabelHeaders && res.guidedLabelRawData) {
       setGuidedLabelData(
         res.guidedLabelFile,
@@ -70,7 +129,7 @@ export default function QuickLoadModal({ isOpen, onClose }: QuickLoadModalProps)
       );
     }
 
-    // 6. Data Sample ID
+    // 7. Data Sample ID
     if (res.dataSampleId) {
       setDataSampleId(res.dataSampleId);
     }

@@ -693,6 +693,48 @@
   animation: slideUp 300ms ease;
 }
 
+.weightsHeaderRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--gap-sm);
+}
+
+.weightModeToggle {
+  display: inline-flex;
+  gap: 4px;
+  background: var(--bg-secondary);
+  padding: 3px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--bg-card-border);
+}
+
+.weightModeBtn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: calc(var(--radius-sm) - 2px);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.weightModeBtn:hover {
+  color: var(--text-primary);
+}
+
+.weightModeBtnActive {
+  background: var(--bg-card-hover);
+  color: var(--accent);
+  border-color: var(--bg-card-border);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  font-weight: 600;
+}
+
 .weightsConfigDesc {
   font-size: 13px;
   color: var(--text-secondary);

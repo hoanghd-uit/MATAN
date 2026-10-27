@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import type { SessionStore, TelemetryRow, GameplayMedia, Dimension, GamingSpaceMedia } from '@/types';
-import { buildTimelineEvents } from '@/lib/timeline';
+import type { SessionStore, TelemetryRow, GameplayMedia, Dimension, GamingSpaceMedia, ModalityCell, ExecutionMode, TimelineEvent } from '@/types';
+import { buildTimelineEvents, parseImageFilenameToTime } from '@/lib/timeline';
 
 // TODO: uncomment this for future uncomment
 // const DEFAULT_DIMENSIONS: Dimension[] = [
@@ -11,8 +11,19 @@ const DEFAULT_DIMENSIONS: Dimension[] = [
   { name: 'Arousal', min: -1, max: 1, step: 0.1, traceType: 'GTrace' },
 ];
 
+export const createDefaultModalities = (): ModalityCell[] => [
+  { id: 'mod-1', name: '', type: null, files: [], urls: [], skipOffset: 0 },
+  { id: 'mod-2', name: '', type: null, files: [], urls: [], skipOffset: 0 },
+  { id: 'mod-3', name: '', type: null, files: [], urls: [], skipOffset: 0 },
+  { id: 'mod-4', name: '', type: null, files: [], urls: [], skipOffset: 0 },
+];
+
 export const useSessionStore = create<SessionStore>((set, get) => ({
-  // Upload state
+  // Generic Modality Cells (Responsive Modal Adapter)
+  modalities: createDefaultModalities(),
+  executionMode: 'gated_multi_pass',
+
+  // Upload state (legacy references)
   gameplayMedia: null,
   gamingSpaceMedia: null,
   telemetryData: [],
@@ -40,6 +51,39 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   totalDuration: 0,
   isPlaying: false,
   visitedEvents: {},
+
+  // Modality actions
+  setModalities: (modalities: ModalityCell[]) => set({ modalities }),
+
+  addModalityCell: () => {
+    const current = get().modalities;
+    const newCell: ModalityCell = {
+      id: `mod-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      name: '',
+      type: null,
+      files: [],
+      urls: [],
+      skipOffset: 0,
+    };
+    set({ modalities: [...current, newCell] });
+  },
+
+  removeModalityCell: (id: string) => {
+    const current = get().modalities;
+    const target = current.find(m => m.id === id);
+    if (target && target.urls) {
+      target.urls.forEach(u => URL.revokeObjectURL(u));
+    }
+    set({ modalities: current.filter(m => m.id !== id) });
+  },
+
+  updateModalityCell: (id: string, updates: Partial<ModalityCell>) => {
+    const current = get().modalities;
+    const updated = current.map(m => (m.id === id ? { ...m, ...updates } : m));
+    set({ modalities: updated });
+  },
+
+  setExecutionMode: (mode: ExecutionMode) => set({ executionMode: mode }),
 
   // Actions
   setGameplayMedia: (media: GameplayMedia) => set({ gameplayMedia: media }),
@@ -91,9 +135,80 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   setDataSampleId: (id: string) => set({ dataSampleId: id }),
 
   startSession: () => {
-    const { telemetryData, dimensions, guidedLabelRawData, guidedLabelHeaders } = get();
-    const events = buildTimelineEvents(telemetryData);
+    const { telemetryData: rawTelemetry, modalities, dimensions, guidedLabelRawData, guidedLabelHeaders } = get();
+
+    // Check if telemetry is in modalities
+    let effectiveTelemetry = rawTelemetry;
+    let effectiveTelemetryHeaders = get().telemetryHeaders;
+    let effectiveTelemetryFileName = get().telemetryFileName;
+
+    const telemCell = modalities.find(m => m.type === 'telemetry' && m.telemetryData && m.telemetryData.length > 0);
+    if (telemCell && telemCell.telemetryData) {
+      effectiveTelemetry = telemCell.telemetryData;
+      effectiveTelemetryHeaders = telemCell.telemetryHeaders || [];
+      effectiveTelemetryFileName = telemCell.telemetryFileName || telemCell.name || 'telemetry.csv';
+    }
+
+    let events: TimelineEvent[] = [];
+    if (effectiveTelemetry.length > 0) {
+      events = buildTimelineEvents(effectiveTelemetry);
+    } else {
+      // Fallback: check if there is an image modality
+      const imgCell = modalities.find(m => m.type === 'images' && m.files.length > 0);
+      if (imgCell) {
+        events = imgCell.files.map((file, i) => {
+          const t = parseImageFilenameToTime(file.name);
+          return {
+            relativeTime: t !== null ? t : i * 0.1,
+            rowIndex: i,
+            rawTimestamp: t !== null ? Math.round(t * 1000) : i * 100,
+          };
+        });
+      } else {
+        // Fallback for video or audio only
+        const defaultDuration = 60;
+        const step = 0.5;
+        const count = Math.max(10, Math.floor(defaultDuration / step));
+        events = Array.from({ length: count }, (_, i) => ({
+          relativeTime: i * step,
+          rowIndex: i,
+          rawTimestamp: i * Math.round(step * 1000),
+        }));
+      }
+    }
+
     const duration = events.length > 0 ? events[events.length - 1].relativeTime : 0;
+
+    // Sync legacy media variables if needed
+    const audioCell = modalities.find(m => m.type === 'audio' && m.files.length > 0);
+    let effectiveAudioFile = get().audioFile;
+    let effectiveAudioUrl = get().audioUrl;
+    if (audioCell && audioCell.files.length > 0) {
+      effectiveAudioFile = audioCell.files[0];
+      effectiveAudioUrl = audioCell.urls[0] || (audioCell.files[0] ? URL.createObjectURL(audioCell.files[0]) : null);
+    }
+
+    const videoOrImgCells = modalities.filter(m => (m.type === 'video' || m.type === 'images') && m.files.length > 0);
+    let effectiveGameplay = get().gameplayMedia;
+    let effectiveGamingSpace = get().gamingSpaceMedia;
+    if (videoOrImgCells.length > 0) {
+      const first = videoOrImgCells[0];
+      effectiveGameplay = {
+        type: first.type === 'video' ? 'video' : 'images',
+        files: first.files,
+        urls: first.urls,
+      };
+      if (videoOrImgCells.length > 1) {
+        const second = videoOrImgCells[1];
+        if (second.type === 'video' && second.files.length > 0) {
+          effectiveGamingSpace = {
+            file: second.files[0],
+            url: second.urls[0],
+            skipOffset: second.skipOffset || 0,
+          };
+        }
+      }
+    }
 
     const initialRatings: Record<string, number[]> = {};
     const initialVisited: Record<string, Set<number>> = {};
@@ -139,6 +254,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       guidedRatings: initialGuidedRatings,
       visitedEvents: initialVisited,
       isPlaying: false,
+      telemetryData: effectiveTelemetry,
+      telemetryHeaders: effectiveTelemetryHeaders,
+      telemetryFileName: effectiveTelemetryFileName,
+      audioFile: effectiveAudioFile,
+      audioUrl: effectiveAudioUrl,
+      gameplayMedia: effectiveGameplay,
+      gamingSpaceMedia: effectiveGamingSpace,
     });
   },
 
@@ -266,11 +388,16 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   submitSession: () => set({ sessionState: 'completed' }),
 
   reset: () => {
-    const { audioUrl, gameplayMedia, gamingSpaceMedia } = get();
+    const { audioUrl, gameplayMedia, gamingSpaceMedia, modalities } = get();
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     if (gameplayMedia) gameplayMedia.urls.forEach(u => URL.revokeObjectURL(u));
     if (gamingSpaceMedia && gamingSpaceMedia.url) URL.revokeObjectURL(gamingSpaceMedia.url);
+    modalities.forEach(m => {
+      m.urls.forEach(u => URL.revokeObjectURL(u));
+    });
     set({
+      modalities: createDefaultModalities(),
+      executionMode: 'gated_multi_pass',
       gameplayMedia: null,
       gamingSpaceMedia: null,
       telemetryData: [],

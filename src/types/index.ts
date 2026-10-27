@@ -25,6 +25,22 @@ export interface GamingSpaceMedia {
   skipOffset: number; // in seconds
 }
 
+export type ModalityType = 'video' | 'images' | 'audio' | 'telemetry';
+
+export interface ModalityCell {
+  id: string;
+  name: string;
+  type: ModalityType | null;
+  files: File[];
+  urls: string[];
+  skipOffset: number; // in seconds
+  telemetryHeaders?: string[];
+  telemetryData?: TelemetryRow[];
+  telemetryFileName?: string;
+}
+
+export type ExecutionMode = 'single_pass' | 'gated_multi_pass';
+
 export type SessionState = 'upload' | 'active' | 'completed';
 
 export type TraceType = 'GTrace' | 'RankTrace' | 'BTrace';
@@ -38,9 +54,14 @@ export interface Dimension {
 }
 
 export interface SessionStore {
-  // Upload state
+  // Generic Modality Cells (Responsive Modal Adapter)
+  modalities: ModalityCell[];
+  executionMode: ExecutionMode;
+
+  // Upload state (maintained for backwards compatibility)
   gameplayMedia: GameplayMedia | null;
   gamingSpaceMedia: GamingSpaceMedia | null;
+
   telemetryData: TelemetryRow[];
   telemetryHeaders: string[];
   telemetryFileName: string;
@@ -70,6 +91,12 @@ export interface SessionStore {
   visitedEvents: Record<string, Set<number>>; // maps dimension name to visited indices
 
   // Actions
+  setModalities: (modalities: ModalityCell[]) => void;
+  addModalityCell: () => void;
+  removeModalityCell: (id: string) => void;
+  updateModalityCell: (id: string, updates: Partial<ModalityCell>) => void;
+  setExecutionMode: (mode: ExecutionMode) => void;
+
   setGameplayMedia: (media: GameplayMedia) => void;
   setGamingSpaceMedia: (media: GamingSpaceMedia | null) => void;
   updateGamingSpaceSkipOffset: (offset: number) => void;

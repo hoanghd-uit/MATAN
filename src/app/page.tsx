@@ -42,6 +42,9 @@ export default function Home() {
     guidedLabelHeaders,
     setGuidedLabelData,
     clearGuidedLabel,
+    modalities,
+    executionMode,
+    setExecutionMode,
   } = useSessionStore();
 
   const [autoLoading, setAutoLoading] = useState(false);
@@ -276,8 +279,12 @@ export default function Home() {
   ]);
 
   const isUpload = sessionState === 'upload';
+  const hasLoadedModality = modalities.some(
+    (m) => m.type !== null && (m.files.length > 0 || (m.telemetryData && m.telemetryData.length > 0))
+  );
   const canStart =
-    gameplayMedia !== null && telemetryData.length > 0 && audioFile !== null;
+    hasLoadedModality ||
+    (gameplayMedia !== null && telemetryData.length > 0 && audioFile !== null);
 
   return (
     <div className={styles.page} data-gaming-space-available={!!gamingSpaceMedia}>
@@ -500,55 +507,30 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* TODO: uncomment this for future uncomment */}
-              {/* Guided Label File (Optional) */}
-              {/* <div className={styles.guidedConfig} id="block-guided-label">
-                <div className={styles.guidedConfigRow}>
-                  <div className={styles.guidedHeader}>
-                    <span className={styles.ratingConfigLabel}>📄 Guided Label</span>
-                    <span className={styles.optionalBadge}>Optional</span>
-                  </div>
-                  {guidedLabelFileName ? (
-                    <div className={styles.guidedLoadedBadge}>
-                      <span title={guidedLabelFileName} className={styles.guidedFileName}>
-                        {guidedLabelFileName}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleClearGuidedFile}
-                        className={styles.guidedRemoveBtn}
-                        title="Remove guided label file"
-                        id="btn-remove-guided-file"
-                      >
-                        &times;
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => guidedFileInputRef.current?.click()}
-                      className={styles.guidedUploadBtn}
-                      id="btn-upload-guided-file"
-                      disabled={guidedLoading}
-                    >
-                      {guidedLoading ? '⏳ Reading...' : '📁 Upload .csv'}
-                    </button>
-                  )}
+              {/* Execution Mode (Single-Pass vs Gated Multi-Pass) */}
+              <div className={styles.executionModeConfig} id="block-execution-mode">
+                <span className={styles.ratingConfigLabel}>🔄 Execution Mode</span>
+                <div className={styles.executionModeToggleGroup}>
+                  <button
+                    type="button"
+                    className={`${styles.executionModeBtn} ${executionMode === 'gated_multi_pass' ? styles.executionModeBtnActive : ''}`}
+                    onClick={() => setExecutionMode('gated_multi_pass')}
+                    id="btn-mode-gated"
+                    title="Sequential passes per dimension with completion gating"
+                  >
+                    🔒 Gated Multi-Pass
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.executionModeBtn} ${executionMode === 'single_pass' ? styles.executionModeBtnActive : ''}`}
+                    onClick={() => setExecutionMode('single_pass')}
+                    id="btn-mode-single"
+                    title="Single-pass mode with free dimension switching"
+                  >
+                    ⚡ Single-Pass
+                  </button>
                 </div>
-                {guidedError && (
-                  <div className={styles.guidedError} id="guided-file-error">
-                    ⚠️ {guidedError}
-                  </div>
-                )}
-                <input
-                  type="file"
-                  ref={guidedFileInputRef}
-                  accept=".csv"
-                  onChange={handleGuidedFileChange}
-                  className="visually-hidden"
-                  id="input-guided-label"
-                />
-              </div> */}
+              </div>
             </div>
 
             {validationError && (
@@ -592,7 +574,7 @@ export default function Home() {
                 onClick={handleStartSession}
                 id="btn-start-session"
               >
-                {canStart ? '🚀 Start Labeling Session' : '⏳ Upload all data to begin'}
+                {canStart ? '🚀 Start Labeling Session' : '⏳ Upload data to begin'}
               </button>
             </div>
 

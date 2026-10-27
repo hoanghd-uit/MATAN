@@ -758,6 +758,44 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* === Responsive Modal Adapter Grid === */
+.modalAdapterGrid {
+  display: grid;
+  gap: var(--gap-md);
+  width: 100%;
+}
+
+.modalGrid1 {
+  grid-template-columns: 1fr;
+}
+
+.modalGrid2 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.modalGrid3 {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.modalGrid4 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto;
+}
+
+.modalGridMulti {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.offsetPill {
+  margin-left: 8px;
+  font-size: 10px;
+  background: rgba(99, 102, 241, 0.4);
+  color: #c7d2fe;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-family: var(--font-mono);
+}
+
 /* === 2x2 layout overrides === */
 .grid2x2 {
   display: grid;

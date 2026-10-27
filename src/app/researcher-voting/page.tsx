@@ -22,6 +22,7 @@ export default function ResearcherVotingPage() {
   const [votingColumns, setVotingColumns] = useState<string[]>([]);
   const [manualColumnInput, setManualColumnInput] = useState('');
   const [votingMethod, setVotingMethod] = useState<VotingMethod>('SOFT_VOTING');
+  const [weightMode, setWeightMode] = useState<'auto' | 'manual'>('auto');
   const [customWeights, setCustomWeights] = useState<Record<string, string>>({});
   
   const [isDragging, setIsDragging] = useState(false);
@@ -103,7 +104,7 @@ export default function ResearcherVotingPage() {
 
   // Get weights validation results
   const getWeightsValidation = () => {
-    if (votingMethod !== 'WEIGHTED_VOTING') {
+    if (votingMethod !== 'WEIGHTED_VOTING' || weightMode === 'auto') {
       return { isValid: true, error: '' };
     }
 
@@ -238,11 +239,14 @@ export default function ResearcherVotingPage() {
         const T = Math.min(...uploadedFiles.map((f) => f.data.length));
         const resultsMap: Record<string, VotingResult> = {};
         
-        // Parse customWeights into Record<string, number> mapped by filename
-        const manualWeightsMap: Record<string, number> = {};
-        uploadedFiles.forEach((file) => {
-          manualWeightsMap[file.name] = parseFloat(customWeights[file.id] || '0');
-        });
+        // Parse customWeights into Record<string, number> mapped by filename if in manual mode
+        let manualWeightsMap: Record<string, number> | undefined = undefined;
+        if (votingMethod === 'WEIGHTED_VOTING' && weightMode === 'manual') {
+          manualWeightsMap = {};
+          uploadedFiles.forEach((file) => {
+            manualWeightsMap![file.name] = parseFloat(customWeights[file.id] || '0');
+          });
+        }
         
         // 1. Run consensus aggregation for each selected column
         votingColumns.forEach((col) => {
@@ -570,39 +574,74 @@ export default function ResearcherVotingPage() {
             {/* Weights Configuration Block */}
             {votingMethod === 'WEIGHTED_VOTING' && uploadedFiles.length >= 2 && (
               <div className={styles.weightsConfigBlock}>
-                <span className={styles.blockLabel}>⚖️ Annotator Weights Configuration</span>
-                <p className={styles.weightsConfigDesc}>
-                  Set a weight for each file. Weights must be strictly between 0 and 1, and the total must sum to exactly 1.0.
-                </p>
-                <div className={styles.weightsInputList}>
-                  {uploadedFiles.map((file) => (
-                    <div key={file.id} className={styles.weightInputRow}>
-                      <span className={styles.weightFileName} title={file.name}>
-                        {file.name}
-                      </span>
-                      <input
-                        type="number"
-                        step="0.0001"
-                        min="0"
-                        max="1"
-                        value={customWeights[file.id] || ''}
-                        onChange={(e) => {
-                          const newVal = e.target.value;
-                          setCustomWeights((prev) => ({
-                            ...prev,
-                            [file.id]: newVal,
-                          }));
-                          setAnalysisResult(null); // Reset summary
-                        }}
-                        className={styles.weightInputField}
-                      />
-                    </div>
-                  ))}
+                <div className={styles.weightsHeaderRow}>
+                  <span className={styles.blockLabel}>⚖️ Annotator Weights Mode</span>
+                  <div className={styles.weightModeToggle}>
+                    <button
+                      type="button"
+                      className={`${styles.weightModeBtn} ${weightMode === 'auto' ? styles.weightModeBtnActive : ''}`}
+                      onClick={() => {
+                        setWeightMode('auto');
+                        setAnalysisResult(null);
+                      }}
+                      id="btn-weight-auto"
+                    >
+                      🤖 Automatic (Reliability)
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.weightModeBtn} ${weightMode === 'manual' ? styles.weightModeBtnActive : ''}`}
+                      onClick={() => {
+                        setWeightMode('manual');
+                        setAnalysisResult(null);
+                      }}
+                      id="btn-weight-manual"
+                    >
+                      ✏️ Manual Weights
+                    </button>
+                  </div>
                 </div>
-                {weightsValidation.error ? (
-                  <p className={styles.weightsValidationError}>⚠️ {weightsValidation.error}</p>
+
+                {weightMode === 'auto' ? (
+                  <p className={styles.weightsConfigDesc}>
+                    Each annotator's weight is automatically derived from their Leave-One-Out (LOO) Krippendorff's alpha reliability score across the cohort (default behavior in paper).
+                  </p>
                 ) : (
-                  <p className={styles.weightsValidationSuccess}>✓ Weights are valid (sums to 1.0)</p>
+                  <>
+                    <p className={styles.weightsConfigDesc}>
+                      Set a manual weight for each file. Weights must be strictly between 0 and 1, and the total must sum to exactly 1.0.
+                    </p>
+                    <div className={styles.weightsInputList}>
+                      {uploadedFiles.map((file) => (
+                        <div key={file.id} className={styles.weightInputRow}>
+                          <span className={styles.weightFileName} title={file.name}>
+                            {file.name}
+                          </span>
+                          <input
+                            type="number"
+                            step="0.0001"
+                            min="0"
+                            max="1"
+                            value={customWeights[file.id] || ''}
+                            onChange={(e) => {
+                              const newVal = e.target.value;
+                              setCustomWeights((prev) => ({
+                                ...prev,
+                                [file.id]: newVal,
+                              }));
+                              setAnalysisResult(null); // Reset summary
+                            }}
+                            className={styles.weightInputField}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    {weightsValidation.error ? (
+                      <p className={styles.weightsValidationError}>⚠️ {weightsValidation.error}</p>
+                    ) : (
+                      <p className={styles.weightsValidationSuccess}>✓ Weights are valid (sums to 1.0)</p>
+                    )}
+                  </>
                 )}
               </div>
             )}

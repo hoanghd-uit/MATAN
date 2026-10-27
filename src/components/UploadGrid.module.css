@@ -1,10 +1,17 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
 .grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--gap-md);
   width: 100%;
-  max-width: 960px;
-  margin: 0 auto;
   animation: fadeIn 500ms ease;
 }
 
@@ -12,6 +19,31 @@
   .grid {
     grid-template-columns: 1fr;
   }
+}
+
+.addCellBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: var(--bg-card);
+  border: 1px dashed var(--bg-card-border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  width: 100%;
+}
+
+.addCellBtn:hover {
+  border-color: var(--accent);
+  border-style: solid;
+  color: var(--text-primary);
+  background: rgba(108, 92, 231, 0.1);
+  transform: translateY(-1px);
 }
 
 @keyframes fadeIn {
